@@ -9,7 +9,7 @@
 ### Test Credentials
 
 * **Admin (Developer):** `sidhkkr10@gmail.com`
-* **Admin (Professor):** `vpg@gmail.com` (Password: `1234`)
+* **Admin (Professor):** `vpg@gmail.com` (Password: `123456`)
 * **Test User (Normal):** (Create one, e.g., `testuser@gmail.com`)
 A submission for the ITH-241: App Development course in fulfillment of Experiment 14.
 
