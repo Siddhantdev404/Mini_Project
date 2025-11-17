@@ -141,12 +141,10 @@ class _AuthScreenState extends State<AuthScreen> {
                 try {
                   await _authService.sendPasswordResetEmail(email);
                   // Close the dialog
-                  // ignore: use_build_context_synchronously
                   if (mounted) Navigator.of(context).pop();
                   _showSuccessSnackbar('Password reset link sent to $email');
                 } on FirebaseAuthException catch (e) {
-                  // ignore: use_build_context_synchronously
-                  if (mounted) Navigator.of(context).pop();
+                    if (mounted) Navigator.of(context).pop();
                   _showErrorSnackbar(e.message ?? 'Failed to send link.');
                 }
               },
@@ -339,3 +337,4 @@ class _AuthScreenState extends State<AuthScreen> {
     );
   }
 }
+// --- THE BROKEN EXTENSION WAS HERE ---

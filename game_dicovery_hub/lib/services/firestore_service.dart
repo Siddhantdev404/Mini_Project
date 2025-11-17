@@ -1,5 +1,4 @@
-// ignore_for_file: prefer_const_declarations
-
+import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
@@ -9,114 +8,88 @@ class FirestoreService {
 
   String? get _userId => _auth.currentUser?.uid;
 
-  // --- ADD a game to the backlog ---
-  // In lib/services/firestore_service.dart
+  // --- ADD a game (Your existing code) ---
+  Future<void> addGameToBacklog(Map<String, dynamic> gameData) async {
+    if (_userId == null) return;
 
-// In lib/services/firestore_service.dart
-
-// ... (Your existing imports and class definition) ...
-
-// --- ADD a game to the backlog (UPDATED WITH LIMITS) ---
-// In lib/services/firestore_service.dart
-
-Future<void> addGameToBacklog(Map<String, dynamic> gameData) async {
-  if (_userId == null) return; 
-
-  final userDoc = await _db.collection('users').doc(_userId).get();
-  final data = userDoc.data();
-  
-  // Fetch current user roles and count
-  final bool isPremium = data?['isPremium'] ?? false;
-  final bool isAdmin = data?['isAdmin'] ?? false;
-  final bool isGuest = data?['isGuest'] ?? false;
-  final int currentCount = data?['backlogCount'] ?? 0;
-
-  // --- LIMIT LOGIC ---
-  final int maxGuestLimit = 5; // Guest Limit
-  final int maxNormalLimit = 10; // Normal User Limit
-  
-  // Determine the limit based on user type
-  final int maxLimit = isGuest ? maxGuestLimit : maxNormalLimit;
-
-  // PREMIUM/ADMIN CHECK: Skip limits
-  if (!(isPremium || isAdmin)) {
-    // If user is NOT Premium/Admin, check the limit
-    if (currentCount >= maxLimit) {
-      // Throw a specific exception that the UI can catch
-      throw Exception('BACKLOG_LIMIT_REACHED:$maxLimit');
+    final userDoc = await _db.collection('users').doc(_userId).get();
+    if (!userDoc.exists) {
+      throw Exception('User profile does not exist.');
     }
+
+    final data = userDoc.data();
+    final bool isPremium = data?['isPremium'] ?? false;
+    final bool isAdmin = data?['isAdmin'] ?? false;
+    final bool isGuest = data?['isGuest'] ?? false;
+    final int currentCount = data?['backlogCount'] ?? 0;
+
+    const int maxGuestLimit = 5;
+    const int maxNormalLimit = 10;
+    final int maxLimit = isGuest ? maxGuestLimit : maxNormalLimit;
+
+    if (!(isPremium || isAdmin)) {
+      if (currentCount >= maxLimit) {
+        throw Exception('BACKLOG_LIMIT_REACHED:$maxLimit');
+      }
+    }
+
+    final int gameId = gameData['id'];
+
+    await _db
+        .collection('users')
+        .doc(_userId)
+        .collection('backlog')
+        .doc(gameId.toString())
+        .set(gameData);
+
+    await _db.collection('users').doc(_userId).update({
+      'backlogCount': FieldValue.increment(1),
+    });
   }
-  // --- END OF LIMIT LOGIC ---
-  
-  final int gameId = gameData['id'];
-  // ... (rest of the save logic: add document and increment count) ...
-  await _db.collection('users').doc(_userId).collection('backlog').doc(gameId.toString()).set(gameData);
-  await _db.collection('users').doc(_userId).update({'backlogCount': FieldValue.increment(1)});
-}
-  // --- REMOVE a game from the backlog ---
+
+  // --- REMOVE a game (Your existing code) ---
   Future<void> removeGameFromBacklog(int gameId) async {
     if (_userId == null) return;
 
-    // 1. Delete the game document
     await _db
         .collection('users')
         .doc(_userId)
         .collection('backlog')
         .doc(gameId.toString())
         .delete();
-        
-    // 2. Decrement the count on the user's profile
+
     await _db.collection('users').doc(_userId).update({
       'backlogCount': FieldValue.increment(-1),
     });
   }
 
-  // --- GET the backlog count (for Problem 2) ---
-  Future<int> getBacklogCount() async {
-    if (_userId == null) return 0;
-    try {
-      final doc = await _db.collection('users').doc(_userId).get();
-      return doc.data()?['backlogCount'] as int? ?? 0;
-    } catch (e) {
-      return 0; // Return 0 if doc doesn't exist
-    }
-  }
-
-  // --- NEW: UPGRADE TO PREMIUM FUNCTION (for Problem 4) ---
-// In lib/services/firestore_service.dart
-
-Future<void> upgradeToPremium() async {
-  if (_userId == null) {
-    throw Exception('You must be logged in to upgrade.');
-  }
-
-  // --- NEW: Add logic to check if user is already premium or admin ---
-  final userDoc = await _db.collection('users').doc(_userId).get();
-  final bool isPremium = userDoc.data()?['isPremium'] ?? false;
-  final bool isAdmin = userDoc.data()?['isAdmin'] ?? false;
-
-  if (isPremium || isAdmin) {
-    throw Exception('You are already a premium member.');
-  }
-  // --- END NEW LOGIC ---
-  
-  // NOTE: You are not allowed to update 'isPremium' directly from the client 
-  // due to the security rules. The line below will fail if not done by Admin.
-  
-  // *** If you are using this for testing only, you need to be an Admin to run this. ***
-  final userDocRef = _db.collection('users').doc(_userId);
-  await userDocRef.update({'isPremium': true});
-}
-  // --- GET the backlog as a stream ---
-  Stream<QuerySnapshot> getBacklogStream() {
+  // --- UPGRADE (Your existing code) ---
+  Future<void> upgradeToPremium() async {
     if (_userId == null) {
-      // ignore: prefer_const_constructors
-      return Stream.empty();
+      throw Exception('You must be logged in to upgrade.');
     }
-    return _db
-        .collection('users')
-        .doc(_userId)
-        .collection('backlog')
-        .snapshots();
+    
+    final userDocRef = _db.collection('users').doc(_userId);
+    await userDocRef.update({'isPremium': true});
+  }
+
+  // --- GET the backlog as a stream ---
+  // --- THIS IS THE FIX FOR THE LOGOUT ERROR ---
+  Stream<QuerySnapshot?> getBacklogStream() { // Return type changed to QuerySnapshot?
+    // 1. Listen to auth state changes
+    return _auth.idTokenChanges().asyncExpand((User? user) {
+      if (user == null) {
+        // 2. If user is null (logged out), return a stream of null.
+        // This STOPS the query and prevents PERMISSION_DENIED.
+        return Stream.value(null);
+      } else {
+        // 3. User is logged in, return their backlog stream.
+        return _db
+            .collection('users')
+            .doc(user.uid)
+            .collection('backlog')
+            .snapshots();
+      }
+    });
   }
 }

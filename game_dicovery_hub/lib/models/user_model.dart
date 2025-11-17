@@ -7,11 +7,9 @@ class UserModel {
   final String? displayName;
   final String? photoURL;
   final bool isGuest;
-  
-  // These are our new roles
-  final bool isPremium;
   final bool isAdmin;
-  final int backlogCount; // For the 4-game limit
+  final bool isPremium;
+  final int backlogCount;
 
   UserModel({
     required this.uid,
@@ -19,37 +17,40 @@ class UserModel {
     this.displayName,
     this.photoURL,
     this.isGuest = false,
-    this.isPremium = false,
     this.isAdmin = false,
+    this.isPremium = false,
     this.backlogCount = 0,
   });
 
-  // A factory to create a UserModel from a Firebase User and their Firestore document
-  factory UserModel.fromFirestore(User firebaseUser, DocumentSnapshot<Map<String, dynamic>>? firestoreDoc) {
-    
-    // Default roles (if doc doesn't exist yet)
-    bool isPremium = false;
-    bool isAdmin = false;
-    int backlogCount = 0;
-
-    // Read roles from the Firestore document if it exists
-    if (firestoreDoc != null && firestoreDoc.exists) {
-      isPremium = firestoreDoc.data()?['isPremium'] as bool? ?? false;
-      isAdmin = firestoreDoc.data()?['isAdmin'] as bool? ?? false;
-      backlogCount = firestoreDoc.data()?['backlogCount'] as int? ?? 0;
-    }
-
+  // Constructor that uses the Firestore document data
+  factory UserModel.fromFirestore(User user, DocumentSnapshot doc) {
+    final data = doc.data() as Map<String, dynamic>?;
     return UserModel(
-      uid: firebaseUser.uid,
-      email: firebaseUser.email,
-      displayName: firebaseUser.displayName,
-      photoURL: firebaseUser.photoURL,
-      isGuest: firebaseUser.isAnonymous,
-      isPremium: isPremium,
-      isAdmin: isAdmin,
-      backlogCount: backlogCount,
+      uid: user.uid,
+      email: user.email ?? data?['email'],
+      displayName: user.displayName ?? data?['displayName'],
+      photoURL: user.photoURL ?? data?['photoURL'],
+      isGuest: user.isAnonymous,
+      // Read roles from the database document
+      isAdmin: data?['isAdmin'] ?? false,
+      isPremium: data?['isPremium'] ?? false,
+      backlogCount: data?['backlogCount'] ?? 0,
     );
   }
 
-  static fromDocument(DocumentSnapshot<Map<String, dynamic>> snap) {}
+  // --- THIS IS THE FIX ---
+  // This is the missing constructor that your user_service.dart needs.
+  factory UserModel.fromAuthOnly(User user) {
+    return UserModel(
+      uid: user.uid,
+      email: user.email,
+      displayName: user.displayName,
+      photoURL: user.photoURL,
+      isGuest: user.isAnonymous,
+      // Default all other values, as we don't have a doc to read from
+      isAdmin: false,
+      isPremium: false,
+      backlogCount: 0,
+    );
+  }
 }

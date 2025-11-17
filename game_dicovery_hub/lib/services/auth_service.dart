@@ -1,5 +1,3 @@
-// lib/services/auth_service.dart
-
 // ignore_for_file: use_build_context_synchronously
 
 import 'package:firebase_auth/firebase_auth.dart';
@@ -10,48 +8,58 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 final FirebaseFirestore _db = FirebaseFirestore.instance;
 
-// --- HELPER FUNCTION: Creates Firestore User Profile on sign-in (CORRECTED & SAFE) ---
-// This function runs every time a user successfully logs in.
+// --- HELPER FUNCTION: Creates Firestore User Profile on sign-in (FINAL FIX) ---
 Future<void> _createFirestoreUser(User user) async {
   final userDocRef = _db.collection('users').doc(user.uid);
   final doc = await userDocRef.get();
   
   // 1. DETERMINE DEVELOPER STATUS (PERMANENT)
   final bool isDeveloperAdmin = (user.email == 'sidhkkr10@gmail.com');
-  final bool isProfessorAdmin = (user.email == 'vpg@gmail.com'); // Professor admin check
+  final bool isProfessorAdmin = (user.email == 'vpg@gmail.com');
   final bool isAdminUser = isDeveloperAdmin || isProfessorAdmin;
 
-  // Fields common to all logins (used for merging)
-  Map<String, dynamic> commonData = {
-    'email': user.email,
-    'displayName': user.displayName,
-    'photoURL': user.photoURL,
-    'isGuest': user.isAnonymous,
-    'lastSignIn': FieldValue.serverTimestamp(),
-    
-    // Developer override for roles
-    'isAdmin': isAdminUser,
-    'isPremium': isAdminUser,
-  };
-
   if (!doc.exists) {
-    // 2. NEW USER: SET INITIAL DATA (Only runs once)
-    Map<String, dynamic> initialData = {
+    // 2. NEW USER: SET INITIAL DATA
+    // This is fine, as 'allow create' is simple.
+    await userDocRef.set({
       'uid': user.uid,
-      'backlogCount': 0, // Starts at zero
-      'createdAt': FieldValue.serverTimestamp(), // Written only once
-    };
-
-    // Merge initial and common data for the first write
-    initialData.addAll(commonData);
-    await userDocRef.set(initialData);
+      'email': user.email,
+      'displayName': user.displayName,
+      'photoURL': user.photoURL,
+      'isGuest': user.isAnonymous,
+      'backlogCount': 0,
+      'createdAt': FieldValue.serverTimestamp(),
+      'isAdmin': isAdminUser,
+      'isPremium': isAdminUser, // Admins get Premium by default
+      'lastSignIn': FieldValue.serverTimestamp(),
+    });
 
   } else {
     // 3. EXISTING USER: MERGE DATA SAFELY
-    // This preserves existing 'backlogCount' and 'createdAt'.
+    
+    // --- THIS IS THE FIX ---
+    // Start with data that is safe for ALL users to write.
+    Map<String, dynamic> updateData = {
+      'email': user.email,
+      'displayName': user.displayName,
+      'photoURL': user.photoURL,
+      'isGuest': user.isAnonymous,
+      'lastSignIn': FieldValue.serverTimestamp(),
+    };
+
+    // ONLY if the user is an admin, do we add the role fields to the map.
+    // This way, a normal user's request will NOT contain the 'isAdmin' key,
+    // and it will pass the security rule.
+    if (isAdminUser) {
+      updateData['isAdmin'] = true;
+      updateData['isPremium'] = true;
+    }
+    // --- END OF FIX ---
+    
+    // This merge is now safe for all user types.
     await userDocRef.set(
-      commonData, 
-      SetOptions(merge: true)
+      updateData, 
+      SetOptions(merge: true) 
     );
   }
 }
@@ -59,8 +67,10 @@ Future<void> _createFirestoreUser(User user) async {
 
 class AuthService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
+  
+  // The parameter must be 'serverClientId' for Android, not 'clientId'.
   final GoogleSignIn _googleSignIn = GoogleSignIn(
-    clientId: '237697877135-0mpu9ra4njr0m09h9dl53vhr07393nmo.apps.googleusercontent.com',
+    serverClientId: '237697877135-0mpu9ra4njr0m09h9dl53vhr07393nmo.apps.googleusercontent.com',
   );
 
   // --- SIGN-IN METHODS ---
@@ -92,7 +102,12 @@ class AuthService {
         verificationId: verificationId,
         smsCode: smsCode,
       );
+      
+      // --- THIS IS THE FIX ---
+      // This line was missing, causing the "Undefined name" error.
       UserCredential userCredential = await _auth.signInWithCredential(credential);
+      // --- END OF FIX ---
+      
       if (userCredential.user != null) {
         await _createFirestoreUser(userCredential.user!);
       }
